@@ -173,8 +173,6 @@ public class TestController {
 
 1、访问 localhost:8080 无任何阻拦直接成功
 
-
-
 2、点击测试验证权限控制按钮 被重定向到了 Security默认的登录页面 
 
 3、使用 MyUserDetailsUserService定义的默认账户 user : 123456 进行登录后成功跳转到 /get_user 接口
@@ -192,8 +190,19 @@ public class TestController {
 
 #### WebSecurityConfiguration
 
+java doc
+
+> **Uses a WebSecurity to create the FilterChainProxy that performs the web based security for Spring Security**. It then exports the necessary beans. 
+>
+> **Customizations can be made to WebSecurity by extending WebSecurityConfigurerAdapter and exposing it as a Configuration or implementing WebSecurityConfigurer and exposing it as a Configuration.** This configuration is imported when using EnableWebSecurity.
+
  首先我们查看 **WebSecurityConfiguration** 源码，可以看到 **springSecurityFilterChain()** 方法，**用来生成 Spring Security Filter Chain**。
 ```java
+    /**
+	 * Creates the Spring Security Filter Chain
+	 * @return the Filter that represents the security filter chain
+	 * @throws Exception
+	 */
     @Bean(name = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
 	public Filter springSecurityFilterChain() throws Exception {
 		boolean hasConfigurers = webSecurityConfigurers != null
@@ -207,7 +216,7 @@ public class TestController {
 		return webSecurity.build(); //1
 	}
 ```
-这个方法首先会判断 webSecurityConfigurers 是否为空，为空加载一个默认的 WebSecurityConfigurerAdapter对象，由于**自定义的 SpringSecurityConfig 本身是继承 WebSecurityConfigurerAdapter对象的，所以我们自定义的 Security 配置肯定会被加载进来的**（如果想要了解如何加载进来可以看下WebSecurityConfiguration.setFilterChainProxySecurityConfigurer() 方法）。
+这个方法首先会判断 webSecurityConfigurers 是否为空，为空加载一个默认的 WebSecurityConfigurerAdapter对象，由于**自定义的 SpringSecurityConfig 本身是继承 WebSecurityConfigurerAdapter对象的，所以我们自定义的 Security 配置肯定会被加载进来的**（如果想要了解如何加载进来可以看下**WebSecurityConfiguration.setFilterChainProxySecurityConfigurer()** 方法）。
 
  我们看下 webSecurity.build() 方法实现 实际调用的是 **AbstractConfiguredSecurityBuilder.doBuild()** 方法，其方法内部实现如下：
 
@@ -384,9 +393,9 @@ HttpRequestResponseHolder holder = new HttpRequestResponseHolder(request,
 
 
 
-#### 2、UsernamePasswordAuthenticationFilter 
+#### 2、UsernamePasswordAuthenticationFilter (AbstractAuthenticationProcessingFilter)
 
-UsernamePasswordAuthenticationFilter 继承自 AbstractAuthenticationProcessingFilter。增加了部分方法，核心方法是 doFilter()。
+**UsernamePasswordAuthenticationFilter 继承自 AbstractAuthenticationProcessingFilter。增加了部分方法，核心方法是 AbstractAuthenticationProcessingFilter 中的 doFilter()**。
 
 doc 如下：
 
@@ -411,7 +420,7 @@ public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
 		HttpServletRequest request = (HttpServletRequest) req;
 		HttpServletResponse response = (HttpServletResponse) res;
 
-        // 2 判断请求地址是否是  /login 和 请求方式为 POST  （UsernamePasswordAuthenticationFilter 构造方法中初始化 super(new AntPathRequestMatcher("/login", "POST")); 确定的）
+        // 2 默认判断请求地址是否是  /login 和 请求方式为 POST  （UsernamePasswordAuthenticationFilter 构造方法中初始化 super(new AntPathRequestMatcher("/login", "POST")); 确定的）
 		if (!requiresAuthentication(request, response)) {
 			chain.doFilter(request, response);
 			return;
@@ -468,7 +477,7 @@ java doc
 
 >**Processes a HTTP request's BASIC authorization headers, putting the result into the SecurityContextHolder.**
 >	For a detailed background on what this filter is designed to process, refer to RFC 1945, Section 11.1 . Any realm name presented in the HTTP request is ignored.
->In summary, this filter is responsible for processing any request that has a HTTP request header of Authorization with an authentication scheme of Basic and a Base64-encoded username:password token. For example, to authenticate user "Aladdin" with password "open sesame" the following header would be presented:
+>	In summary, this filter is responsible for processing any request that has a HTTP request header of Authorization with an authentication scheme of Basic and a Base64-encoded username:password token. For example, to authenticate user "Aladdin" with password "open sesame" the following header would be presented:
 >
 >Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==
 >
@@ -481,24 +490,38 @@ java doc
 
 BasicAuthenticationFilter  是一个 OncePerRequestFilter ，特点是**每个请求线程中只会执行一次**，filter 主方法是 **doFilterInternal()**。
 
-BasicAuthenticationFilter 与 UsernameAuthticationFilter 类似，不过区别还是很明显，**BasicAuthenticationFilter 主要是从Header 中获取 Authorization 参数信息，然后调用认证，认证成功后最后直接访问接口。 UsernameAuthticationFilter 通过 AuthenticationSuccessHandler 进行跳转**。
+BasicAuthenticationFilter 与 UsernameAuthticationFilter 类似，不过区别还是很明显，**BasicAuthenticationFilter 主要是从Header 中获取 Authorization 参数信息，然后调用认证，认证成功后最后直接访问接口。 **BasicAuthenticationFilter 的 onSuccessfulAuthentication() 和 onUnsuccessfulAuthentication() 处理方法是一个空方法。
 
-BasicAuthenticationFilter 的 onSuccessfulAuthentication() 和 onUnsuccessfulAuthentication() 处理方法是一个空方法。
+**UsernameAuthticationFilter 通过 AuthenticationSuccessHandler 进行跳转。**
 
 为了试验BasicAuthenticationFilter, 我们需要将 SpringSecurityConfig 中的formLogin()更换成httpBasic()以支持BasicAuthenticationFilter，重启项目，同样访问
-localhast:8080/get_user/test，这时由于没权限访问这个接口地址，页面上会弹出一个登陆框，熟悉Security4的同学一定很眼熟吧，同样，我们输入账户密码后，看下debug数据：
+localhast:8080/get_user/test，这时由于没权限访问这个接口地址，页面上会弹出一个登陆框，输入账户密码后，看下debug数据：
 
+![image-20201231132123220](.\httpBasic认证.png)
 
+我们就能够获取到 Authorization 参数，进而解析获取到其中的账户和密码信息，进行认证。
 
- 这时，我们就能够获取到 Authorization 参数，进而解析获取到其中的账户和密码信息，进行认证，我们查看认证成功后返回的Authtication对象信息其实是和UsernamePasswordAuthticationFilter中的一致，最后再次调用下一个filter，由于已经认证成功了会直接进入FilterSecurityInterceptor 进行权限验证。
+我们查看认证成功后返回的**Authtication对象信息其实是和 UsernamePasswordAuthticationFilter 中的一致**，最后再次调用下一个 filter，由于已经认证成功了会直接进入 FilterSecurityInterceptor 进行权限验证。
 
 
 
 #### 4、AnonymousAuthenticationFilter
-&emsp;&emsp;这里为什么要提下 AnonymousAuthenticationFilter呢，主要是因为在Security中不存在没有账户这一说法（这里可能描述不是很清楚，但大致意思是这样的），针对这个Security官方专门指定了这个AnonymousAuthenticationFilter ，用于前面所有filter都认证失败的情况下，自动创建一个默认的匿名用户，拥有匿名访问权限。还记得 在讲解 SecurityContextPersistenceFilter 时我们看到得匿名 autication信息么？如果不记得还得回头看下哦，这里就不再叙述了。
+&emsp;&emsp;这里为什么要提下 AnonymousAuthenticationFilter呢，主要是因为**在Security中不存在没有账户，所有没有经过注册的账户都会被当成 匿名用户 – anonymousUser，Security官方专门指定了 AnonymousAuthenticationFilter** 。
+
+**当前面所有filter都认证失败的情况下，自动创建一个默认的匿名用户，拥有匿名访问权限**。还记得 在讲解 SecurityContextPersistenceFilter 时我们看到得匿名 autication信息么？如果不记得还得回头看下哦，这里就不再叙述了。
+
+
 
 #### 5、ExceptionTranslationFilter
-&emsp;&emsp;ExceptionTranslationFilter 其实没有做任何过滤处理，但别小看它得作用，它最大也最牛叉之处就在于它捕获AuthenticationException 和AccessDeniedException，如果发生的异常是这2个异常 会调用 handleSpringSecurityException()方法进行处理。 我们模拟下 AccessDeniedException(无权限，禁止访问异常)情况，首先我们需要修改下 /get_user 接口：
+
+java doc
+
+> **Handles any AccessDeniedException and AuthenticationException thrown within the filter chain.**
+> **This filter is necessary because it provides the bridge between Java exceptions and HTTP responses.** **It is solely concerned with maintaining the user interface. This filter does not do any actual security enforcement.**
+> 	If an AuthenticationException is detected, the filter will launch the authenticationEntryPoint. This allows common handling of authentication failures originating from any subclass of org.springframework.security.access.intercept.AbstractSecurityInterceptor.
+> 	If an AccessDeniedException is detected, the filter will determine whether or not the user is an anonymous user. If they are an anonymous user, the authenticationEntryPoint will be launched. If they are not an anonymous user, the filter will delegate to the AccessDeniedHandler. By default the filter will use AccessDeniedHandlerImpl.
+
+**ExceptionTranslationFilter 其实没有做任何过滤处理，它的用处就在于它捕获AuthenticationException 和 AccessDeniedException，如果发生2 个异常会调用 handleSpringSecurityException() 方法进行处理**。 我们模拟下 AccessDeniedException(无权限，禁止访问异常)情况，首先我们需要修改下 /get_user 接口：
 
 - 在Controller 上添加 
 @EnableGlobalMethodSecurity(prePostEnabled =true) 启用Security 方法级别得权限控制
@@ -520,28 +543,28 @@ public class TestController {
 
 重启项目,重新访问 /get_user 接口，输入正确的账户密码，发现返回一个 403 状态的错误页面，这与我们之前将的流程时一致的。debug，看下处理：
 
-![image](https://ws4.sinaimg.cn/large/006Xmmmggy1g65ag1aj1yj311k0emjtx.jpg)
+![image-20201231134835408](.\AccessDeniedException.png)
 
 
-&emsp;&emsp;可以明显的看到异常对象是 AccessDeniedException ，异常信息是不允许访问，我们再看下 AccessDeniedException 异常后的处理方法accessDeniedHandler.handle(),进入到了 AccessDeniedHandlerImpl 的handle()方法，这个方法会先判断系统是否配置了 errorPage (错误页面)，没有的话直接往 response 中设置403 状态码。
 
-![image](https://ws4.sinaimg.cn/large/006Xmmmgly1g65akracrsj30u00gcq51.jpg)
+可以明显的看到异常对象是 AccessDeniedException ，异常信息是不允许访问，我们再看下 AccessDeniedException 异常后的**处理方法 accessDeniedHandler.handle()** , 进入到了 **AccessDeniedHandlerImpl 的handle()方法**，这个方法会先判断系统是否配置了 errorPage (错误页面)，没有的话直接往 response 中设置403 状态码。
+
+![image-20201231134954178](.\accessDeniedHandle.png)
 
 
 
 #### 6、FilterSecurityInterceptor
-&emsp;&emsp;FilterSecurityInterceptor 是整个Security filter链中的最后一个，也是最重要的一个，它的主要功能就是判断认证成功的用户是否有权限访问接口，其最主要的处理方法就是 调用父类（AbstractSecurityInterceptor）的 super.beforeInvocation(fi)，我们来梳理下这个方法的处理流程：
+**FilterSecurityInterceptor 是整个Security filter链中的最后一个，也是最重要的一个，它的主要功能就是判断认证成功的用户是否有权限访问接口**。其最主要的处理方法就是调用父类（AbstractSecurityInterceptor）的 **super.beforeInvocation(fi)**，我们来梳理下这个方法的处理流程：
 
 > - 通过 obtainSecurityMetadataSource().getAttributes() 获取 当前访问地址所需权限信息
 > - 通过 authenticateIfRequired() 获取当前访问用户的权限信息
-> - 通过 accessDecisionManager.decide() 使用 投票机制判权，判权失败直接抛出 AccessDeniedException 异常
+> - 通过 accessDecisionManager.decide() **使用投票机制判权，判权失败直接抛出 AccessDeniedException 异常**
 
 
 
 
-```
+```java
 protected InterceptorStatusToken beforeInvocation(Object object) {
-	       
 	    ......
 	    
 	    // 1 获取访问地址的权限信息 
@@ -560,7 +583,6 @@ protected InterceptorStatusToken beforeInvocation(Object object) {
         // 2 获取当前访问用户权限信息
 		Authentication authenticated = authenticateIfRequired();
 
-	
 		try {
 		    // 3  默认调用AffirmativeBased.decide() 方法, 其内部 使用 AccessDecisionVoter 对象 进行投票机制判权，判权失败直接抛出 AccessDeniedException 异常 
 			this.accessDecisionManager.decide(authenticated, object, attributes);
@@ -578,7 +600,11 @@ protected InterceptorStatusToken beforeInvocation(Object object) {
 	}
 ```
 
-&emsp;&emsp; 整个流程其实看起来不复杂，主要就分3个部分，首选获取访问地址的权限信息，其次获取当前访问用户的权限信息，最后通过投票机制判断出是否有权。
+整个流程其实看起来不复杂，主要就分3个部分:
+
+- **首选获取访问地址的权限信息**
+- **其次获取当前访问用户的权限信息**
+- **最后通过投票机制判断出是否有权。**
 
 
 
@@ -587,9 +613,6 @@ protected InterceptorStatusToken beforeInvocation(Object object) {
 
       整个授权流程核心的就在于这几次核心filter的处理，这里我用序列图来概况下这个授权流程
 
-![image](https://ws2.sinaimg.cn/large/006Xmmmgly1g65blh3kezj323o0oawie.jpg)（PS： 如果图片展示不清楚，可访问项目的 github 地址）
+![授权过程序列图](.\授权过程序列图.png)
 
 
-&emsp;&emsp; 本文介绍授权过程的代码可以访问代码仓库中的 security 模块 ，项目的github 地址 : https://github.com/BUG9/spring-security 
-
-&emsp;&emsp; &emsp;&emsp; &emsp;&emsp; **如果您对这些感兴趣，欢迎star、follow、收藏、转发给予支持！**
