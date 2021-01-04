@@ -12,7 +12,7 @@
 &emsp;&emsp;查看 @EnableGlobalAuthentication 注解源码，我们可以看到其引用了AuthenticationConfiguration 配置类。其中有一个方法值得我们注意，那就是  getAuthenticationManager()  （**还记得授权过程中调用了 AuthenticationManager().authenticate() 进行认证么？**）,  我们来看下其源码内部大致逻辑：
 
 
-```
+```java
 public AuthenticationManager getAuthenticationManager() throws Exception {
 
         ......
@@ -37,7 +37,7 @@ public AuthenticationManager getAuthenticationManager() throws Exception {
 &emsp;&emsp;我们再详细看下这个build的过程，可以发现其 build 调用跟授权过程中build securityFilterChain 一样 都是通过 AbstractConfiguredSecurityBuilder.doBuild() 方法中的 performBuild() 进行构建， 不过这次不再是调用其子类  HttpSecurity.performBuild() 而是  AuthenticationManagerBuilder.performBuild() 。
 我们来看下 AuthenticationManagerBuilder.performBuild() 方法内部实现：
 
-```
+```java
 protected ProviderManager performBuild() throws Exception {
 		if (!isConfigured()) {
 			logger.debug("No authenticationProviders and no parentAuthenticationManager defined. Returning null.");
