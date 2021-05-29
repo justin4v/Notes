@@ -170,7 +170,7 @@ modCount 主要是用来记录对 list 的结构改变的操作次数。提供 *
     }
 ```
 
-可以看到，next() 中每次都会调用 checkForComodification(); 进行 expectedModCount 和 modCount 的比较校验。当二者值不相同时就会抛出 **ConcurrentModificationException**
+可以看到，**next() 中每次都会调用 checkForComodification()进行 expectedModCount 和 modCount 的比较校验**。当二者值不相同时就会抛出 **ConcurrentModificationException**
 
 在示例中，当调用  strings.remove(string); 时**实际调用 fastRemove modeCount 会自增**。当在 **增强 for** 中**再次调用 next()** 方法时由于 expectedModCount 只会进行一次初始化 ```int expectedModCount = modCount;``` **二者值不相同**，所以抛出了 异常。
 
